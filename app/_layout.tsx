@@ -1,56 +1,123 @@
-import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { useFonts as useFont } from 'expo-font';
+import {
+  IBMPlexSans_400Regular,
+  IBMPlexSans_500Medium,
+  IBMPlexSans_600SemiBold,
+} from '@expo-google-fonts/ibm-plex-sans';
+import {
+  IBMPlexSansCondensed_500Medium,
+  IBMPlexSansCondensed_600SemiBold,
+  IBMPlexSansCondensed_700Bold,
+} from '@expo-google-fonts/ibm-plex-sans-condensed';
+import {
+  IBMPlexSansDevanagari_400Regular,
+  IBMPlexSansDevanagari_500Medium,
+  IBMPlexSansDevanagari_600SemiBold,
+} from '@expo-google-fonts/ibm-plex-sans-devanagari';
+import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { QueryClient } from '@tanstack/react-query';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/components/useColorScheme';
+import '../src/locales/i18n';
+import { getStoredLanguage } from '../src/locales/i18n';
+import i18n from '../src/locales/i18n';
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
+import '../global.css';
+
+export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: '(tabs)',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      gcTime: 24 * 60 * 60 * 1000, // 24h – keep cache for offline
+      staleTime: 5 * 60 * 1000,    // 5 min
+    },
+  },
+});
+
+const asyncStoragePersister = createAsyncStoragePersister({
+  storage: AsyncStorage,
+  key: 'raah-query-cache',
+});
+
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+  const router = useRouter();
+  const [fontsLoaded, fontError] = useFont({
+    IBMPlexSans_400Regular,
+    IBMPlexSans_500Medium,
+    IBMPlexSans_600SemiBold,
+    IBMPlexSansCondensed_500Medium,
+    IBMPlexSansCondensed_600SemiBold,
+    IBMPlexSansCondensed_700Bold,
+    IBMPlexSansDevanagari_400Regular,
+    IBMPlexSansDevanagari_500Medium,
+    IBMPlexSansDevanagari_600SemiBold,
   });
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
+  const [langLoaded, setLangLoaded] = useState(false);
+  const [hasStoredLang, setHasStoredLang] = useState<boolean | null>(null);
+
+  // Load stored language preference
   useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+    getStoredLanguage().then(lang => {
+      if (lang) {
+        i18n.changeLanguage(lang);
+        setHasStoredLang(true);
+      } else {
+        setHasStoredLang(false);
+      }
+      setLangLoaded(true);
+    });
+  }, []);
 
   useEffect(() => {
-    if (loaded) {
+    if (fontError) throw fontError;
+  }, [fontError]);
+
+  useEffect(() => {
+    if (fontsLoaded && langLoaded) {
       SplashScreen.hideAsync();
+      if (hasStoredLang === false) {
+        router.replace('/language-select');
+      }
     }
-  }, [loaded]);
+  }, [fontsLoaded, langLoaded, hasStoredLang]);
 
-  if (!loaded) {
+  if (!fontsLoaded || !langLoaded) {
     return null;
   }
 
-  return <RootLayoutNav />;
-}
-
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{ persister: asyncStoragePersister }}
+    >
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <StatusBar style="dark" />
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="language-select" options={{ headerShown: false }} />
+          <Stack.Screen name="plan/result" options={{ headerShown: false }} />
+          <Stack.Screen name="report/mine" options={{ headerShown: false }} />
+          <Stack.Screen name="drive" options={{ headerShown: false }} />
+          <Stack.Screen name="settings" options={{ headerShown: false }} />
+          <Stack.Screen name="about" options={{ headerShown: false }} />
+          <Stack.Screen name="kitchen-sink" options={{ headerShown: false }} />
+        </Stack>
+      </GestureHandlerRootView>
+    </PersistQueryClientProvider>
   );
 }
